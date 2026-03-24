@@ -1,0 +1,22 @@
+Options -Indexes
+DirectoryIndex index.php
+
+# Block direct access to sensitive files
+<FilesMatch "\.(json|sql|log|tmp|bak|sh)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Block direct access to config/helpers/views/data directories
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Block direct access to internal directories
+    RewriteRule ^(config|helpers|views|data)/ - [F,L]
+
+    # Optionally force all requests through index.php (uncomment if needed)
+    # RewriteCond %{REQUEST_FILENAME} !-f
+    # RewriteCond %{REQUEST_FILENAME} !-d
+    # RewriteRule ^(.*)$ index.php [QSA,L]
+</IfModule>
