@@ -101,7 +101,6 @@ drxstore/
 ## 📧 Contact
 **Developer:** Vineet  
 **Email:** psvineet@zohomail.in  
-**Password Reset (patients):** psvineet@zohomail.in
 
 ---
 
