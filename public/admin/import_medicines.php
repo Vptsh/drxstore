@@ -20,7 +20,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                 $preview[]=['name'=>trim($name),'generic'=>trim($mapped['generic']??$mapped['generic_name']??($row[1]??'')),'company'=>trim($mapped['company']??$mapped['manufacturer']??($row[2]??'')),'category'=>trim($mapped['category']??($row[3]??'')),'hsn'=>trim($mapped['hsn']??$mapped['hsn_code']??($row[4]??'')),'gst'=>is_numeric($v=($mapped['gst']??$mapped['gst_percent']??'12'))?(float)$v:12,'rack'=>trim($mapped['rack']??$mapped['rack_location']??($row[6]??''))];
             }
             fclose($handle);
-            if(empty($preview)){$errors[]='No valid rows found.';}else{$_SESSION['csv_prev']=$preview;}
+            if(empty($preview)){$errors[]='No valid rows found.';}else{$_SESSION['csv_prev']=$preview;header('Location: index.php?p=import_med');exit;}
         }
     }
     if($act==='confirm'&&!empty($_SESSION['csv_prev'])){
