@@ -149,6 +149,7 @@ function startSession(): void {
     if (session_status() === PHP_SESSION_NONE) {
         // Only modify session path/params before headers are sent
         if (!headers_sent()) {
+            $isHttps = !empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off';
             $sp = session_save_path();
             if (empty($sp) || !is_writable($sp)) {
                 $t = sys_get_temp_dir();
@@ -157,7 +158,7 @@ function startSession(): void {
             session_set_cookie_params([
                 'lifetime' => 0,
                 'path'     => '/',
-                'secure'   => false,
+                'secure'   => $isHttps,
                 'httponly'  => true,
                 'samesite' => 'Lax',
             ]);
@@ -339,4 +340,3 @@ function sendStockAlertEmails(): void {
         if ($f !== $flagFile) @unlink($f);
     }
 }
-

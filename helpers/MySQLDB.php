@@ -140,6 +140,7 @@ class MySQLDB {
                 'active'       => 'TINYINT(1) DEFAULT 1',
                 'verified'     => 'TINYINT(1) DEFAULT 0',
                 'verify_token' => 'VARCHAR(100)',
+                'verify_sent_at' => 'DATETIME',
                 'verified_at'  => 'DATETIME',
                 'last_login'   => 'DATETIME',
                 'updated_at'   => 'DATETIME',

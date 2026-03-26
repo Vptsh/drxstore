@@ -11,9 +11,10 @@ startSession();
 if ($db->count('settings') > 0) { header('Location: index.php?p=login'); exit; }
 
 // AJAX MySQL connection test
-if (get('action') === 'test_mysql') {
+if ($_SERVER['REQUEST_METHOD']==='POST' && post('action') === 'test_mysql') {
+    verifyCsrf();
     header('Content-Type: application/json');
-    $err = MySQLDB::testConnection(get('host','localhost'), getInt('port',3306), get('name',''), get('user','root'), get('pass',''));
+    $err = MySQLDB::testConnection(post('host','localhost'), postInt('port',3306), post('name',''), post('user','root'), post('pass',''));
     echo json_encode(['ok'=>$err===null, 'msg'=>$err ?? 'Connection successful! Database ready.']);
     exit;
 }
@@ -57,9 +58,9 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         if (empty($s)||empty($a)) { $step=1; } else {
             if (($s['driver']??'json')==='mysql'&&!empty($s['mysql'])) {
                 $m=$s['mysql'];
-                file_put_contents(DATA_DIR.'/db_config.json',json_encode(['driver'=>'mysql','host'=>$m['mh'],'port'=>$m['mp'],'name'=>$m['mn'],'user'=>$m['mu'],'password'=>$m['ms']]));
                 try { $pdo=new PDO("mysql:host={$m['mh']};port={$m['mp']};dbname={$m['mn']};charset=utf8mb4",$m['mu'],$m['ms'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]); MySQLDB::createTables($pdo); $db=new MySQLDB($m['mh'],$m['mp'],$m['mn'],$m['mu'],$m['ms']); }
                 catch(Exception $ex){$errors[]='MySQL table creation failed: '.$ex->getMessage();goto render;}
+                file_put_contents(DATA_DIR.'/db_config.json',json_encode(['driver'=>'mysql','host'=>$m['mh'],'port'=>$m['mp'],'name'=>$m['mn'],'user'=>$m['mu'],'password'=>$m['ms']]));
             }
             // Seed categories
             if($db->count('categories')===0){foreach(DOSAGE_FORMS as $f)$db->insert('categories',['name'=>$f,'type'=>'dosage']);}
@@ -176,10 +177,15 @@ function testMysql(){
   var btn=document.getElementById('testBtn'),res=document.getElementById('mysqlResult');
   btn.disabled=true;btn.textContent='Testing...';res.style.display='block';
   res.innerHTML='<div class="alert alert-info"><span class="alert-body">Connecting...</span></div>';
-  var url='index.php?p=setup&action=test_mysql&host='+encodeURIComponent(document.getElementById('mhost').value)
-    +'&port='+document.getElementById('mport').value+'&name='+encodeURIComponent(document.getElementById('mname').value)
-    +'&user='+encodeURIComponent(document.getElementById('muser').value)+'&pass='+encodeURIComponent(document.getElementById('mpass').value);
-  fetch(url).then(function(r){return r.json();}).then(function(d){
+  var fd=new FormData();
+  fd.append('csrf_token', document.querySelector('input[name="csrf_token"]').value);
+  fd.append('action', 'test_mysql');
+  fd.append('host', document.getElementById('mhost').value);
+  fd.append('port', document.getElementById('mport').value);
+  fd.append('name', document.getElementById('mname').value);
+  fd.append('user', document.getElementById('muser').value);
+  fd.append('pass', document.getElementById('mpass').value);
+  fetch('index.php?p=setup',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){
     res.innerHTML=d.ok?'<div class="alert alert-success"><span class="alert-body">'+d.msg+'</span></div>':'<div class="alert alert-danger"><span class="alert-body">'+d.msg+'</span></div>';
     btn.disabled=false;btn.textContent='Test Connection';
   }).catch(function(e){res.innerHTML='<div class="alert alert-danger"><span class="alert-body">Error: '+e.message+'</span></div>';btn.disabled=false;btn.textContent='Test Connection';});

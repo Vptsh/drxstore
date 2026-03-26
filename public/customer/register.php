@@ -1,6 +1,7 @@
 <?php
 if (!defined('ROOT')) define('ROOT', dirname(dirname(dirname(__FILE__))));
 require_once ROOT.'/config/app.php'; startSession();
+if (!defined('VERIFY_TOKEN_TTL')) define('VERIFY_TOKEN_TTL', 86400);
 if(!empty($_SESSION['cust_id'])){header('Location: index.php?p=cust_dash');exit;}
 $errors=[];
 if($_SERVER['REQUEST_METHOD']==='POST'){
@@ -14,7 +15,17 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     if($email&&$db->findOne('customers',fn($c)=>strtolower($c['email']??'')===strtolower($email)))$errors[]='Email already registered.';
     if(empty($errors)){
         $token=bin2hex(random_bytes(32));
-        $db->insert('customers',['name'=>$name,'email'=>$email,'phone'=>$phone,'password'=>password_hash($pw,PASSWORD_BCRYPT),'active'=>1,'verified'=>0,'verify_token'=>$token,'created_at'=>date('Y-m-d H:i:s')]);
+        $db->insert('customers',[
+            'name'=>$name,
+            'email'=>$email,
+            'phone'=>$phone,
+            'password'=>password_hash($pw,PASSWORD_BCRYPT),
+            'active'=>1,
+            'verified'=>0,
+            'verify_token'=>$token,
+            'verify_sent_at'=>date('Y-m-d H:i:s'),
+            'created_at'=>date('Y-m-d H:i:s')
+        ]);
         // Send verification email
         $store=storeName(); $vurl=siteUrl('verify',['token'=>$token]);
         $body=mailWrap("Verify Your Email","<p>Dear {$name},</p><p>Thank you for registering at <strong>{$store}</strong>!</p><p>Please click the button below to verify your email address:</p><a href='{$vurl}' class='btn'>Verify My Email</a><p>Or copy this link:<br><code>{$vurl}</code></p><p>If you did not register, ignore this email.</p>");

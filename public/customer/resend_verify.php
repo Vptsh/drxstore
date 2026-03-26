@@ -1,6 +1,7 @@
 <?php
 if (!defined('ROOT')) define('ROOT', dirname(dirname(dirname(__FILE__))));
 require_once ROOT.'/config/app.php'; startSession();
+if (!defined('VERIFY_TOKEN_TTL')) define('VERIFY_TOKEN_TTL', 86400);
 if(!empty($_SESSION['cust_id'])&&!empty($_SESSION['cust_verified'])){header('Location: index.php?p=cust_dash');exit;}
 
 $msg=''; $msgType=''; $submitted=false;
@@ -14,7 +15,10 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
         $cust=$db->findOne('customers',fn($c)=>strtolower($c['email']??'')===strtolower($email));
         if($cust&&empty($cust['verified'])){
             $tok=bin2hex(random_bytes(32));
-            $db->update('customers',fn($c)=>$c['id']===$cust['id'],['verify_token'=>$tok]);
+            $db->update('customers',fn($c)=>$c['id']===$cust['id'],[
+                'verify_token'=>$tok,
+                'verify_sent_at'=>date('Y-m-d H:i:s')
+            ]);
             $store=storeName(); $vurl=siteUrl('verify',['token'=>$tok]);
             $body=mailWrap("Verify Your Email","<p>Dear {$cust['name']},</p><p>You requested a new verification link for <strong>{$store}</strong>.</p><p>Please click the button below to verify your email address:</p><a href='{$vurl}' class='btn'>Verify My Email</a><p>Or copy this link:<br><code>{$vurl}</code></p><p>If you did not request this, ignore this email.</p>");
             sendMail($email,"Verify Your Email — {$store}",$body);

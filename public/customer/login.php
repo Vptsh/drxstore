@@ -17,22 +17,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!$email || !$pw) {
         $error = 'Please enter your email and password.';
     } else {
-        // Allow login regardless of email verification status
         $cust = $db->findOne('customers', fn($c) =>
             strtolower($c['email'] ?? '') === strtolower($email) &&
             ($c['active'] ?? true) &&
             !empty($c['password'])
         );
         if ($cust && password_verify($pw, $cust['password'])) {
-            clearAttempts($ctx);
-            session_regenerate_id(true);
-            $_SESSION['cust_id']      = $cust['id'];
-            $_SESSION['customer_name']= $cust['name'];
-            // Store verification status so dashboard can show banner
-            $_SESSION['cust_verified']= (bool)($cust['verified'] ?? false);
-            $db->update('customers', fn($c) => $c['id'] === $cust['id'], ['last_login' => date('Y-m-d H:i:s')]);
-            setFlash('success', 'Welcome, ' . $cust['name'] . '!');
-            header('Location: index.php?p=cust_dash'); exit;
+            if (empty($cust['verified'])) {
+                $error = 'Please verify your email before signing in.';
+            } else {
+                clearAttempts($ctx);
+                session_regenerate_id(true);
+                $_SESSION['cust_id']      = $cust['id'];
+                $_SESSION['customer_name']= $cust['name'];
+                $_SESSION['cust_verified']= true;
+                $db->update('customers', fn($c) => $c['id'] === $cust['id'], ['last_login' => date('Y-m-d H:i:s')]);
+                setFlash('success', 'Welcome, ' . $cust['name'] . '!');
+                header('Location: index.php?p=cust_dash'); exit;
+            }
         } else {
             recordAttempt($ctx);
             $error = 'Invalid email or password.';

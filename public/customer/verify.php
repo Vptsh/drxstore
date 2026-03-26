@@ -1,6 +1,7 @@
 <?php
 if (!defined('ROOT')) define('ROOT', dirname(dirname(dirname(__FILE__))));
 require_once ROOT.'/config/app.php'; startSession();
+if (!defined('VERIFY_TOKEN_TTL')) define('VERIFY_TOKEN_TTL', 86400);
 
 $token = trim(get('token') ?? '');
 $success = false;
@@ -15,18 +16,26 @@ if (!$token) {
 $cust = $db->findOne('customers', fn($c) => ($c['verify_token'] ?? '') === $token && empty($c['verified']));
 
 if ($cust) {
-    $db->update('customers', fn($c) => $c['id'] === $cust['id'], [
-        'verified'    => 1,
-        'verify_token'=> '',
-        'verified_at' => date('Y-m-d H:i:s'),
-    ]);
-    // Auto-login the patient immediately
-    session_regenerate_id(true);
-    $_SESSION['cust_id']       = $cust['id'];
-    $_SESSION['customer_name'] = $cust['name'];
-    $_SESSION['cust_verified'] = true;
-    $custName = $cust['name'];
-    $success  = true;
+    $sentAt = strtotime((string)($cust['verify_sent_at'] ?? $cust['created_at'] ?? ''));
+    $isFresh = $sentAt && (time() - $sentAt) <= VERIFY_TOKEN_TTL;
+    if ($isFresh) {
+        $db->update('customers', fn($c) => $c['id'] === $cust['id'], [
+            'verified'       => 1,
+            'verify_token'   => '',
+            'verify_sent_at' => null,
+            'verified_at'    => date('Y-m-d H:i:s'),
+        ]);
+        session_regenerate_id(true);
+        $_SESSION['cust_id']       = $cust['id'];
+        $_SESSION['customer_name'] = $cust['name'];
+        $_SESSION['cust_verified'] = true;
+        $custName = $cust['name'];
+        $success  = true;
+    } else {
+        $db->update('customers', fn($c) => $c['id'] === $cust['id'], [
+            'verify_token' => '',
+        ]);
+    }
 }
 
 $cfg = getSettings(); $store = storeName();

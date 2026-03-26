@@ -6,133 +6,118 @@ if (!defined('ROOT')) define('ROOT', dirname(dirname(dirname(__FILE__))));
 require_once ROOT.'/config/app.php'; require_once ROOT.'/views/layout_admin.php'; requireAdmin();
 $errors=[];
 if($_SERVER['REQUEST_METHOD']==='POST'){
-    verifyCsrf(); $act=post('action'); $id=postInt('id');
-    $name=post('name'); $contact=post('contact'); $phone=post('phone'); $email=post('email'); $addr=post('address'); $gst=post('gst_no'); $dl=post('dl_no');
-    $sup_user=post('sup_username'); $sup_pass=post('sup_password');
-    if(!$name)$errors[]='Name required.'; if(!$phone)$errors[]='Phone required.';
-    if(empty($errors)){
-        $d=['name'=>$name,'contact'=>$contact,'phone'=>$phone,'email'=>$email,'address'=>$addr,'gst_no'=>$gst,'dl_no'=>$dl,'updated_at'=>date('Y-m-d H:i:s')];
-        if($act==='edit'&&$id){
-            $db->update('suppliers',fn($s)=>$s['id']===$id,$d);
-            setFlash('success','Updated.');
-        } else {
-            $d['created_at']=date('Y-m-d H:i:s');
-            $sid=$db->insert('suppliers',$d);
-            // Create supplier portal account if credentials given
-            if($sup_user&&$sup_pass){
-                $db->insert('supplier_users',[
-                    'supplier_id'=>$sid,'username'=>$sup_user,
-                    'password'=>password_hash($sup_pass,PASSWORD_BCRYPT),
-                    'email'=>$email,'active'=>1,'created_at'=>date('Y-m-d H:i:s'),
-                ]);
-                // Send credentials email
-                if($email){
-                    $store=storeName(); $storeEmail=storeEmail();
-                    $body=mailWrap("Supplier Account Created","<p>Dear {$name},</p><p>Your supplier portal account has been created for <strong>{$store}</strong>.</p><p><strong>Login URL:</strong> <code>".($_SERVER['HTTP_HOST']??'')."/index.php?p=sup_login</code><br><strong>Username:</strong> <code>{$sup_user}</code><br><strong>Password:</strong> <code>{$sup_pass}</code></p><p>Please change your password after first login.</p><p>Contact us: <a href='mailto:".$storeEmail."'>".$storeEmail."</a></p>");
-                    sendMail($email,"Your Supplier Portal Account — {$store}",$body);
-                }
-            }
-            setFlash('success','"'.$name.'" added'.($sup_user?' with portal account':'').'.');
-        }
-        header('Location: index.php?p=suppliers');exit;
-    }
-}
-if(get('action')==='delete'&&getInt('id')){
-    $sid=getInt('id');
-    $db->delete('suppliers',fn($s)=>$s['id']===$sid);
-    $db->delete('supplier_users',fn($u)=>($u['supplier_id']??0)===$sid);
-    setFlash('success','Deleted.'); header('Location: index.php?p=suppliers');exit;
-}
-// Supplier message actions (must be before any output)
-if (get('action') === 'read_msg' && getInt('msg_id')) {
-    $db->update('supplier_messages', fn($m) => $m['id'] === getInt('msg_id'), ['status' => 'read']);
-    setFlash('success', 'Marked as read.'); header('Location: index.php?p=suppliers'); exit;
-}
-if (get('action') === 'del_msg' && getInt('msg_id')) {
-    $db->delete('supplier_messages', fn($m) => $m['id'] === getInt('msg_id'));
-    setFlash('success', 'Message deleted.'); header('Location: index.php?p=suppliers'); exit;
-}
-if (get('action') === 'reply_sup' && getInt('msg_id')) {
     verifyCsrf();
-    $mid = getInt('msg_id');
-    $reply = post('reply_text');
-    $supMsg = $db->findOne('supplier_messages', fn($m) => $m['id'] === $mid);
-    if ($supMsg && $reply) {
-        // Send reply email to supplier
-        $supUser = $db->findOne('supplier_users', fn($u) => ($u['supplier_id'] ?? 0) === ($supMsg['supplier_id'] ?? 0));
-        $toEmail = $supMsg['sender_email'] ?? ($supUser['email'] ?? null);
-        if ($toEmail) {
-            $bqStyle = 'border-left:3px solid #0a2342;padding:8px 14px;margin:10px 0;background:#f8f9fb';
-            $body = mailWrap(
-                'Reply from ' . storeName(),
-                '<p>Dear ' . e($supMsg['supplier_name'] ?? 'Supplier') . ',</p>'
-                . '<p>You have a reply to your message: <em>' . e($supMsg['subject'] ?? '') . '</em></p>'
-                . '<blockquote style="' . $bqStyle . '">' . nl2br(e($reply)) . '</blockquote>'
-                . '<p>Original message:<br>' . nl2br(e($supMsg['message'] ?? '')) . '</p>'
-            );
-            sendMail($toEmail, "Reply: " . ($supMsg['subject'] ?? 'Your message'), $body);
+    $act=post('action');
+    $id=postInt('id');
+
+    if(in_array($act,['add','edit'],true)){
+        $name=post('name'); $contact=post('contact'); $phone=post('phone'); $email=post('email'); $addr=post('address'); $gst=post('gst_no'); $dl=post('dl_no');
+        $sup_user=post('sup_username'); $sup_pass=post('sup_password');
+        if(!$name)$errors[]='Name required.';
+        if(!$phone)$errors[]='Phone required.';
+        if(empty($errors)){
+            $d=['name'=>$name,'contact'=>$contact,'phone'=>$phone,'email'=>$email,'address'=>$addr,'gst_no'=>$gst,'dl_no'=>$dl,'updated_at'=>date('Y-m-d H:i:s')];
+            if($act==='edit'&&$id){
+                $db->update('suppliers',fn($s)=>$s['id']===$id,$d);
+                setFlash('success','Updated.');
+            } else {
+                $d['created_at']=date('Y-m-d H:i:s');
+                $sid=$db->insert('suppliers',$d);
+                if($sup_user&&$sup_pass){
+                    $db->insert('supplier_users',[
+                        'supplier_id'=>$sid,
+                        'username'=>$sup_user,
+                        'password'=>password_hash($sup_pass,PASSWORD_BCRYPT),
+                        'email'=>$email,
+                        'active'=>1,
+                        'created_at'=>date('Y-m-d H:i:s'),
+                    ]);
+                    if($email){
+                        $store=storeName(); $storeEmail=storeEmail();
+                        $body=mailWrap("Supplier Account Created","<p>Dear {$name},</p><p>Your supplier portal account has been created for <strong>{$store}</strong>.</p><p><strong>Login URL:</strong> <code>".($_SERVER['HTTP_HOST']??'')."/index.php?p=sup_login</code><br><strong>Username:</strong> <code>{$sup_user}</code><br><strong>Password:</strong> <code>{$sup_pass}</code></p><p>Please change your password after first login.</p><p>Contact us: <a href='mailto:".$storeEmail."'>".$storeEmail."</a></p>");
+                        sendMail($email,"Your Supplier Portal Account — {$store}",$body);
+                    }
+                }
+                setFlash('success','"'.$name.'" added'.($sup_user?' with portal account':'').'.');
+            }
+            header('Location: index.php?p=suppliers');exit;
         }
-        // Update original message with reply text
-        $db->update('supplier_messages', fn($m) => $m['id'] === $mid, [
-            'status'     => 'replied',
-            'reply'      => $reply,
-            'replied_at' => date('Y-m-d H:i:s'),
-        ]);
-        // Also insert a new 'out' direction row so supplier sees it as a separate chat bubble
-        $db->insert('supplier_messages', [
-            'supplier_id'   => $supMsg['supplier_id'] ?? 0,
-            'supplier_name' => $supMsg['supplier_name'] ?? '',
-            'sender_email'  => storeEmail(),
-            'subject'       => 'Re: ' . ($supMsg['subject'] ?? ''),
-            'message'       => $reply,
-            'direction'     => 'out',
-            'status'        => 'read',
-            'created_at'    => date('Y-m-d H:i:s'),
-        ]);
-        setFlash('success', 'Reply sent to supplier.');
+    } elseif($act==='delete_supplier' && $id){
+        $db->delete('suppliers',fn($s)=>$s['id']===$id);
+        $db->delete('supplier_users',fn($u)=>($u['supplier_id']??0)===$id);
+        setFlash('success','Deleted.');
+        header('Location: index.php?p=suppliers');exit;
+    } elseif($act==='read_msg' && ($msgId=postInt('msg_id'))){
+        $db->update('supplier_messages', fn($m) => $m['id'] === $msgId, ['status' => 'read']);
+        setFlash('success', 'Marked as read.');
+        header('Location: index.php?p=suppliers'); exit;
+    } elseif($act==='del_msg' && ($msgId=postInt('msg_id'))){
+        $db->delete('supplier_messages', fn($m) => $m['id'] === $msgId);
+        setFlash('success', 'Message deleted.');
+        header('Location: index.php?p=suppliers'); exit;
+    } elseif($act==='reply_sup' && ($msgId=postInt('msg_id'))){
+        $reply = trim(post('reply_text'));
+        $supMsg = $db->findOne('supplier_messages', fn($m) => $m['id'] === $msgId);
+        if ($supMsg && $reply) {
+            $supUser = $db->findOne('supplier_users', fn($u) => ($u['supplier_id'] ?? 0) === ($supMsg['supplier_id'] ?? 0));
+            $toEmail = $supMsg['sender_email'] ?? ($supUser['email'] ?? null);
+            if ($toEmail) {
+                $bqStyle = 'border-left:3px solid #0a2342;padding:8px 14px;margin:10px 0;background:#f8f9fb';
+                $body = mailWrap(
+                    'Reply from ' . storeName(),
+                    '<p>Dear ' . e($supMsg['supplier_name'] ?? 'Supplier') . ',</p>'
+                    . '<p>You have a reply to your message: <em>' . e($supMsg['subject'] ?? '') . '</em></p>'
+                    . '<blockquote style="' . $bqStyle . '">' . nl2br(e($reply)) . '</blockquote>'
+                    . '<p>Original message:<br>' . nl2br(e($supMsg['message'] ?? '')) . '</p>'
+                );
+                sendMail($toEmail, "Reply: " . ($supMsg['subject'] ?? 'Your message'), $body);
+            }
+            $db->update('supplier_messages', fn($m) => $m['id'] === $msgId, [
+                'status'     => 'replied',
+                'reply'      => $reply,
+                'replied_at' => date('Y-m-d H:i:s'),
+            ]);
+            $db->insert('supplier_messages', [
+                'supplier_id'   => $supMsg['supplier_id'] ?? 0,
+                'supplier_name' => $supMsg['supplier_name'] ?? '',
+                'sender_email'  => storeEmail(),
+                'subject'       => 'Re: ' . ($supMsg['subject'] ?? ''),
+                'message'       => $reply,
+                'direction'     => 'out',
+                'status'        => 'read',
+                'created_at'    => date('Y-m-d H:i:s'),
+            ]);
+            setFlash('success', 'Reply sent to supplier.');
+        }
+        header('Location: index.php?p=suppliers'); exit;
+    } elseif($act==='reply_supplier'){
+        $sup_id  = postInt('reply_supplier_id');
+        $reply   = post('reply_message');
+        $sup_u   = $db->findOne('supplier_users', fn($u) => ($u['supplier_id']??0) === $sup_id);
+        $sup_c   = $db->findOne('suppliers', fn($s) => $s['id'] === $sup_id);
+        if ($reply && $sup_c) {
+            $db->insert('supplier_messages', [
+                'supplier_id'   => $sup_id,
+                'supplier_name' => $sup_c['name'] ?? '',
+                'sender_email'  => storeEmail(),
+                'subject'       => 'Reply from ' . storeName(),
+                'message'       => $reply,
+                'direction'     => 'out',
+                'status'        => 'read',
+                'created_at'    => date('Y-m-d H:i:s'),
+            ]);
+            $email = $sup_u['email'] ?? ($sup_c['email'] ?? '');
+            if ($email) {
+                $body = mailWrap('Reply from ' . storeName(), '<p>Dear ' . e($sup_c['name']??'Supplier') . ',</p><p>' . nl2br(e($reply)) . '</p><p>To reply, visit your supplier portal and use Contact Store.</p>');
+                sendMail($email, 'Message from ' . storeName(), $body);
+            }
+            setFlash('success', 'Reply sent to supplier.');
+        }
+        header('Location: index.php?p=suppliers'); exit;
     }
-    header('Location: index.php?p=suppliers'); exit;
 }
 $sups=$db->table('suppliers'); usort($sups,fn($a,$b)=>strcasecmp($a['name'],$b['name']));
 $edit=null; if(get('action')==='edit'&&getInt('id')) $edit=$db->findOne('suppliers',fn($s)=>$s['id']===getInt('id'));
-// Handle message actions BEFORE any output
-if (get('action') === 'read_msg' && getInt('msg_id')) {
-    $db->update('supplier_messages', fn($m) => $m['id'] === getInt('msg_id'), ['status' => 'read']);
-    header('Location: index.php?p=suppliers'); exit;
-}
-if (get('action') === 'del_msg' && getInt('msg_id')) {
-    $db->delete('supplier_messages', fn($m) => $m['id'] === getInt('msg_id'));
-    setFlash('success', 'Message deleted.'); header('Location: index.php?p=suppliers'); exit;
-}
-// Handle supplier reply
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && post('action') === 'reply_supplier') {
-    verifyCsrf();
-    $sup_id  = postInt('reply_supplier_id');
-    $reply   = post('reply_message');
-    $sup_u   = $db->findOne('supplier_users', fn($u) => ($u['supplier_id']??0) === $sup_id);
-    $sup_c   = $db->findOne('suppliers', fn($s) => $s['id'] === $sup_id);
-    if ($reply && $sup_c) {
-        // Save reply as a message from store
-        $db->insert('supplier_messages', [
-            'supplier_id'   => $sup_id,
-            'supplier_name' => $sup_c['name'] ?? '',
-            'sender_email'  => storeEmail(),
-            'subject'       => 'Reply from ' . storeName(),
-            'message'       => $reply,
-            'direction'     => 'out',
-            'status'        => 'read',
-            'created_at'    => date('Y-m-d H:i:s'),
-        ]);
-        // Email supplier if they have an email
-        $email = $sup_u['email'] ?? ($sup_c['email'] ?? '');
-        if ($email) {
-            $body = mailWrap('Reply from ' . storeName(), '<p>Dear ' . e($sup_c['name']??'Supplier') . ',</p><p>' . nl2br(e($reply)) . '</p><p>To reply, visit your supplier portal and use Contact Store.</p>');
-            sendMail($email, 'Message from ' . storeName(), $body);
-        }
-        setFlash('success', 'Reply sent to supplier.');
-    }
-    header('Location: index.php?p=suppliers'); exit;
-}
 adminHeader('Suppliers','suppliers');
 ?>
 <div class="page-hdr">
@@ -160,7 +145,12 @@ adminHeader('Suppliers','suppliers');
       <td class="tc"><span class="chip chip-blue"><?=$bc?></span></td>
       <td><div class="flex gap-1">
         <a href="index.php?p=suppliers&action=edit&id=<?=$s['id']?>" class="btn btn-ghost btn-sm">Edit</a>
-        <a href="index.php?p=suppliers&action=delete&id=<?=$s['id']?>" class="btn btn-danger btn-sm" data-confirm="Delete supplier?">Delete</a>
+        <form method="POST" style="display:inline" onsubmit="return confirm('Delete supplier?')">
+          <?=csrfField()?>
+          <input type="hidden" name="action" value="delete_supplier">
+          <input type="hidden" name="id" value="<?=$s['id']?>">
+          <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+        </form>
       </div></td>
     </tr>
     <?php endforeach;?>
@@ -229,18 +219,19 @@ $unread = count(array_filter($messages, fn($m) => ($m['status']??'') === 'unread
       <div class="flex gap-1" style="margin-top:6px">
         <span class="text-xs text-muted"><?=e($msg['sender_email']??'')?></span>
         <div class="ml-auto flex gap-1">
-          <?php if($isUnread):?><a href="index.php?p=suppliers&action=read_msg&msg_id=<?=$msg['id']?>" class="btn btn-ghost btn-sm">Mark Read</a><?php endif;?>
+          <?php if($isUnread):?><form method="POST" style="display:inline"><?=csrfField()?><input type="hidden" name="action" value="read_msg"><input type="hidden" name="msg_id" value="<?=$msg['id']?>"><button type="submit" class="btn btn-ghost btn-sm">Mark Read</button></form><?php endif;?>
           <button type="button" class="btn btn-ghost btn-sm" onclick="toggleReply('reply_<?=$msg['id']?>')">Reply</button>
-          <a href="index.php?p=suppliers&action=del_msg&msg_id=<?=$msg['id']?>" class="btn btn-danger btn-sm" data-confirm="Delete message?">Delete</a>
+          <form method="POST" style="display:inline" onsubmit="return confirm('Delete message?')"><?=csrfField()?><input type="hidden" name="action" value="del_msg"><input type="hidden" name="msg_id" value="<?=$msg['id']?>"><button type="submit" class="btn btn-danger btn-sm">Delete</button></form>
         </div>
       </div>
     </div>
     <div id="reply_<?=$msg['id']?>" style="display:none;padding:10px 16px;background:var(--navy-lt);border-top:1px solid var(--g3)">
       <form method="POST" class="flex gap-2 items-end">
         <?=csrfField()?>
-        <input type="hidden" name="action" value="noop"> <!-- handled via GET -->
+        <input type="hidden" name="action" value="reply_sup">
+        <input type="hidden" name="msg_id" value="<?=$msg['id']?>">
         <div style="flex:1"><textarea name="reply_text" class="form-control" rows="2" placeholder="Type reply to supplier..."></textarea></div>
-        <a href="javascript:void(0)" onclick="submitReply(<?=$msg['id']?>, this)" class="btn btn-primary">Send</a>
+        <button type="submit" class="btn btn-primary">Send</button>
       </form>
     </div>
     <?php endforeach; endif; ?>
@@ -249,23 +240,6 @@ $unread = count(array_filter($messages, fn($m) => ($m['status']??'') === 'unread
 
 <script>
 function toggleReply(id){var el=document.getElementById(id);el.style.display=el.style.display==='none'?'block':'none';}
-function submitReply(msgId, btn){
-    var form=btn.closest('form');
-    var txt=form.querySelector('textarea').value;
-    if(!txt.trim()){alert('Please type a reply.');return;}
-    // Submit via fetch GET redirect approach
-    var params=new URLSearchParams({p:'suppliers',action:'reply_sup',msg_id:msgId,csrf_token:form.querySelector('[name=csrf_token]').value});
-    // Use a hidden form POST
-    var hf=document.createElement('form');
-    hf.method='POST';
-    hf.action='index.php?p=suppliers&action=reply_sup&msg_id='+msgId;
-    hf.innerHTML='<input name="csrf_token" value="'+form.querySelector('[name=csrf_token]').value+'"><input name="reply_text" value="'+encodeURIComponent(txt)+'"><input name="action" value="reply_sup">';
-    document.body.appendChild(hf);
-    // Actually just set action on form and submit
-    form.action='index.php?p=suppliers&action=reply_sup&msg_id='+msgId;
-    form.method='POST';
-    form.submit();
-}
 </script>
 <!-- Reply Modal -->
 <div class="modal-overlay" id="replyModal">

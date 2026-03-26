@@ -27,6 +27,13 @@ function extractUpdateZip(string $zipPath): array {
     if (!class_exists('ZipArchive')) return ['ok'=>false,'msg'=>'ZipArchive PHP extension not available.'];
     $zip = new ZipArchive;
     if ($zip->open($zipPath) !== true) return ['ok'=>false,'msg'=>'Cannot open ZIP file. File may be corrupt.'];
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $entry = str_replace('\\', '/', $zip->getNameIndex($i));
+        if ($entry === '' || str_starts_with($entry, '/') || preg_match('#(^|/)\.\.(?:/|$)#', $entry)) {
+            $zip->close();
+            return ['ok'=>false,'msg'=>'ZIP contains an invalid path and was rejected.'];
+        }
+    }
     $tmpDir = sys_get_temp_dir().'/drxupdate_'.time();
     @mkdir($tmpDir, 0755, true);
     $zip->extractTo($tmpDir);
@@ -168,7 +175,7 @@ if($_SERVER['REQUEST_METHOD']==='POST' && post('action')==='apply_update') {
     if(!$newRoot || !is_dir($newRoot) || !file_exists($newRoot.'/config/app.php')) {
         $errors[] = 'Update session expired or invalid. Please upload the ZIP again.';
     } else {
-        $applied = 0; $failed = []; $skipped = 0; $deleted = 0;
+        $applied = 0; $failed = []; $skipped = 0;
 
         // ── STEP 1: Copy all new files over current install ──
         $newFilesList = []; // track all files in new package
@@ -193,37 +200,6 @@ if($_SERVER['REQUEST_METHOD']==='POST' && post('action')==='apply_update') {
             }
         }
 
-        // ── STEP 2: Remove files that exist in OLD version but NOT in new package ──
-        // This ensures removed features (portal files etc) don't linger
-        $protectedPrefixes = ['data/']; // never delete data/ contents
-        $protectedFiles    = ['.htaccess']; // keep root htaccess
-
-        $curIter = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(ROOT, FilesystemIterator::SKIP_DOTS));
-        foreach($curIter as $curFile) {
-            if(!$curFile->isFile()) continue;
-            $rel = str_replace('\\','/',substr($curFile->getPathname(), strlen(ROOT)+1));
-
-            // Skip protected paths
-            $skip = false;
-            foreach($protectedPrefixes as $pp) {
-                if(strpos($rel, $pp) === 0) { $skip = true; break; }
-            }
-            if($skip) continue;
-            if(in_array(basename($rel), $protectedFiles)) continue;
-
-            // If this file is NOT in the new package, remove it
-            if(!in_array($rel, $newFilesList)) {
-                if(@unlink(ROOT.'/'.$rel)) {
-                    $deleted++;
-                }
-                // Clean up empty directories
-                $dir = dirname(ROOT.'/'.$rel);
-                if(is_dir($dir) && count(glob($dir.'/*')) === 0 && $dir !== ROOT) {
-                    @rmdir($dir);
-                }
-            }
-        }
-
         // Bust settings cache
         $GLOBALS['_settings_cache'] = null;
 
@@ -240,10 +216,9 @@ if($_SERVER['REQUEST_METHOD']==='POST' && post('action')==='apply_update') {
         unset($_SESSION['_upd_zip'],$_SESSION['_upd_root'],$_SESSION['_upd_newver'],$_SESSION['_upd_curver'],$_SESSION['_upd_tmp']);
 
         if(!empty($failed)) {
-            $result = ['step'=>'done','ok'=>false,'applied'=>$applied,'failed'=>$failed,'newVersion'=>$newVer,'skipped'=>$skipped,'deleted'=>$deleted];
+            $result = ['step'=>'done','ok'=>false,'applied'=>$applied,'failed'=>$failed,'newVersion'=>$newVer,'skipped'=>$skipped];
         } else {
-            $delNote = $deleted > 0 ? " {$deleted} obsolete files removed." : '';
-            setFlash('success',"DRXStore updated to v{$newVer} successfully! {$applied} files updated. {$skipped} protected files skipped.{$delNote} Please clear your browser cache.");
+            setFlash('success',"DRXStore updated to v{$newVer} successfully! {$applied} files updated. {$skipped} protected files skipped. Please clear your browser cache.");
             header('Location: index.php?p=settings'); exit;
         }
     }
@@ -284,8 +259,9 @@ adminHeader('Software Update','settings');
     </div>
     <div style="background:var(--g1);border-radius:10px;padding:14px;font-size:.83rem;color:var(--g6);margin-bottom:16px">
       <strong style="color:var(--navy)">What will happen:</strong><br>
-      • All PHP, CSS, JS and view files will be replaced with the new version<br>
+      • All PHP, CSS, JS and view files included in the release will be replaced<br>
       • Your <code>data/</code> folder (all JSON data, uploaded files) is <strong style="color:var(--green)">completely protected</strong><br>
+      • Local files missing from the release are preserved for safety<br>
       • Your database is untouched — schema changes are auto-applied on next page load<br>
       • Your settings, medicines, sales, batches, customers are all preserved
     </div>
@@ -324,9 +300,9 @@ adminHeader('Software Update','settings');
 
 <?php if(!empty($result['removedFiles'])): ?>
 <div class="card mb-2">
-  <div class="card-hdr"><div class="card-title">Files to be Removed (<?=count($result['removedFiles'])?>)</div></div>
+  <div class="card-hdr"><div class="card-title">Files Not In Update (<?=count($result['removedFiles'])?>)</div></div>
   <div class="card-body">
-    <p class="text-sm text-muted" style="margin-bottom:8px">These files exist in your current install but not in the update. They will be <strong>deleted</strong> during update (data/ folder is always protected).</p>
+    <p class="text-sm text-muted" style="margin-bottom:8px">These files exist in your current install but not in the update. The updater will leave them untouched for safety.</p>
     <?php foreach($result['removedFiles'] as $f): ?>
     <span class="chip chip-gray" style="margin:2px;font-size:.72rem"><?=e($f)?></span>
     <?php endforeach; ?>
